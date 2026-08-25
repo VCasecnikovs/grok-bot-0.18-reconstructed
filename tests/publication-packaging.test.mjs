@@ -190,6 +190,9 @@ test("local Docker provisioning is single-flight across settings and coordinator
   // Regression: Docker Desktop's global credential helper blocked forever while pulling the public VM image, 2026-08-25.
   assert.match(localDocker, /"--config", await writeIsolatedDockerConfig\(settingsPath\)/);
   assert.match(localDocker, /\.\.\.await dockerHostArguments\(\), "run"/);
+  // Regression: QEMU-prefixed argv made the upstream desktop supervisor restart a healthy router forever, 2026-08-25.
+  assert.match(localDocker, /SAND_DESKTOP_SUPERVISION_DISABLED=1/);
+  assert.match(localDocker, /LOCAL_DOCKER_SCHEMA_VERSION = "7"/);
 });
 
 test("the reconstructed app uses its own macOS secure-storage identity", async () => {

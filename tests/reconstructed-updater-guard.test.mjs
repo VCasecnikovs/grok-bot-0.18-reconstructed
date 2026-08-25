@@ -16,6 +16,7 @@ test("reconstructed fallback and clean packaging share one idempotent service gu
   const guarded = applyReconstructedUpdaterGuard(source);
   assert.equal(guarded, `${reconstructedUpdaterGuard}${source}`);
   assert.equal(applyReconstructedUpdaterGuard(guarded), guarded);
+  assert.match(guarded, /SAND_DATA_ROOT \?\?=.*\.grokbot-reconstructed/);
   assert.match(guarded, /SAND_DISABLE_UPDATES \?\?= "1"/);
   assert.match(guarded, /SAND_DISABLE_SENTRY \?\?= "1"/);
   assert.match(guarded, /SAND_DISABLE_TELEMETRY \?\?= "1"/);
