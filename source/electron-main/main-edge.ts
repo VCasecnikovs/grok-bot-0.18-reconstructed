@@ -10,6 +10,7 @@ import { isSandInferenceProvider } from "../shared/inference-router.js";
 import { getLocalInferenceCliStatus } from "../shared/node/inference-router-local.js";
 import { isSandBoxRuntime } from "../shared/box-runtime.js";
 import { getLocalDockerStatus, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
+import { getSshRemoteStatus, installSshRemoteBox } from "./box/ssh-remote-host-installer.js";
 
 export const MAIN_EDGE_UNSERVED = "main/unserved-method";
 export const MAIN_EDGE_UPDATE_UNAVAILABLE = "main/update-unavailable";
@@ -116,6 +117,8 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     setInferenceRouter: async (raw) => { const provider = req(raw).provider; invariant(isSandInferenceProvider(provider), "Unknown inference provider."); invoke(deps.settingsStore, "setInferenceProvider", provider); const settings = await deps.syncHostSettingsToBox({ inferenceProvider: provider }).catch(() => null); return { provider, usage: settings?.inferenceRouterUsage ?? invoke(deps.settingsStore, "getInferenceRouterUsage") ?? null, local: getLocalInferenceCliStatus() }; },
     getBoxRuntime: async () => { const mode = invoke(deps.settingsStore, "getBoxRuntime"); invariant(isSandBoxRuntime(mode), "Unknown box runtime."); return { mode, status: await getLocalDockerStatus(String(Reflect.get(deps.settingsStore, "settingsPath"))) }; },
     setBoxRuntime: async (raw) => { const mode = req(raw).mode; invariant(isSandBoxRuntime(mode), "Unknown box runtime."); const settingsPath = String(Reflect.get(deps.settingsStore, "settingsPath")); invoke(deps.settingsStore, "setBoxRuntime", mode); try { if (mode === "local-docker") await startLocalDockerBox(settingsPath); else await stopLocalDockerBox(); } catch (error) { invoke(deps.settingsStore, "setBoxRuntime", mode === "local-docker" ? "remote" : "local-docker"); throw error; } invoke(deps.boxRecovery, "restartCoordinator"); return { mode, status: await getLocalDockerStatus(settingsPath) }; },
+    getSshRuntime: () => getSshRemoteStatus(String(Reflect.get(deps.settingsStore, "settingsPath"))),
+    installSshRuntime: async (raw) => { const host = req(raw).host; const settingsPath = String(Reflect.get(deps.settingsStore, "settingsPath")); const status = await installSshRemoteBox(settingsPath, host); invoke(deps.settingsStore, "setBoxRuntime", "remote"); invoke(deps.settingsStore, "setInferenceProvider", "codex"); await stopLocalDockerBox(); invoke(deps.boxRecovery, "restartCoordinator"); return status; },
 
     getEgressTunnelEnabled: () => invoke(deps.boxToggleStore, "getEgressTunnelEnabled"),
     setEgressTunnelEnabled: (raw) => { const enabled = req(raw).enabled === true; invoke(deps.boxToggleStore, "setEgressTunnelEnabled", enabled); invoke(egressController(deps), "setEnabled", enabled); deps.emitEgressTunnelChanged(enabled); return enabled; },

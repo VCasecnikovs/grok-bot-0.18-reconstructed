@@ -100,12 +100,15 @@ test("Router settings use the trusted backend and display recorded inference usa
   const coordinatorResync = await readFile(path.join(repoRoot, "source", "electron-main", "coordinator", "coordinator-resync.ts"), "utf8");
   const mcpBridge = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "routed-mcp-bridge.ts"), "utf8");
   const localDocker = await readFile(path.join(repoRoot, "source", "electron-main", "box", "local-docker-host-connector.ts"), "utf8");
+  const sshInstaller = await readFile(path.join(repoRoot, "source", "electron-main", "box", "ssh-remote-host-installer.ts"), "utf8");
   assert.match(rendererPatch, /desktop\.agent\.getInferenceRouter\(\)/);
   assert.match(rendererPatch, /desktop\.agent\.setInferenceRouter\(n\)/);
   assert.match(rendererPatch, /desktop\.agent\.getBoxRuntime\(\)/);
   assert.match(rendererPatch, /desktop\.agent\.setBoxRuntime\(r\)/);
   assert.match(rendererPatch, /role:"switch"/);
   assert.match(rendererPatch, /Use local Docker VM/);
+  assert.match(rendererPatch, /Install on SSH server/);
+  assert.match(rendererPatch, /desktop\.agent\.installSshRuntime/);
   assert.match(rendererPatch, /onValueChange:l=>\{if\(l!==null\)void e\(l\)\}/);
   assert.match(rendererPatch, /desktop\.secrets\.upsert/);
   assert.doesNotMatch(rendererPatch, /settings\.router-provider\.v1/);
@@ -118,12 +121,16 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(preload, /getInferenceRouter: \(\) => edge\("getInferenceRouter"\)/);
   assert.match(preload, /getBoxRuntime: \(\) => edge\("getBoxRuntime"\)/);
   assert.match(preload, /setBoxRuntime: \(mode: string\) => edge\("setBoxRuntime", \{ mode \}\)/);
+  assert.match(preload, /installSshRuntime: \(host: string\) => edge\("installSshRuntime", \{ host \}\)/);
   assert.match(mainEdge, /syncHostSettingsToBox\(\{ inferenceProvider: provider \}\)/);
   assert.match(mainEdge, /invoke\(deps\.settingsStore, "setInferenceProvider", provider\)/);
   assert.match(mainEdge, /return \{ provider, usage:/);
   assert.match(mainEdge, /invoke\(deps\.boxRecovery, "restartCoordinator"\)/);
   assert.match(mainEdge, /mode === "local-docker"\) await startLocalDockerBox\(settingsPath\); else await stopLocalDockerBox\(\)/);
   assert.match(mainEdge, /setBoxRuntime", mode === "local-docker" \? "remote" : "local-docker"/);
+  assert.match(mainEdge, /installSshRemoteBox\(settingsPath, host\)/);
+  assert.match(sshInstaller, /StrictHostKeyChecking=accept-new/);
+  assert.match(sshInstaller, /BatchMode=yes/);
   assert.match(localDocker, /public\.ecr\.aws\/k0i0n2g5\/cursorenvironments\/universal:sand-box-latest/);
   assert.match(localDocker, /"127\.0\.0\.1:1340:1340"/);
   assert.match(localDocker, /SAND_BOX_AUTO_UPDATE=0/);
@@ -198,7 +205,8 @@ test("local Docker provisioning is single-flight across settings and coordinator
   // Regression: QEMU-prefixed argv made the upstream desktop supervisor restart a healthy router forever, 2026-08-25.
   assert.match(localDocker, /SAND_DESKTOP_SUPERVISION_DISABLED=1/);
   assert.match(localDocker, /LOCAL_DOCKER_SCHEMA_VERSION = "7"/);
-  assert.match(localDocker, /SELF_HOSTED_GATEWAY_CONFIG = "self-hosted-gateway\.json"/);
+  assert.match(localDocker, /SSH_REMOTE_CONFIG_FILENAME/);
+  assert.match(localDocker, /ensureSshGatewayTunnel\(connection, ssh\)/);
   assert.match(localDocker, /parsePersistedGatewayConnection\(parsed\)/);
   assert.match(bakenekoInstaller, /--restart unless-stopped/);
   assert.match(bakenekoInstaller, /SAND_AUTO_REVIEW_MODE=off/);

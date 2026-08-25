@@ -68,6 +68,8 @@ export const MAIN_METHOD_TABLE = {
   setInferenceRouter: { args: "object" },
   getBoxRuntime: { args: "none" },
   setBoxRuntime: { args: "object" },
+  getSshRuntime: { args: "none" },
+  installSshRuntime: { args: "object" },
   transcribeAudio: { args: "object" },
   getCursorAuthStatus: { args: "none" },
   loginCursor: { args: "none" },

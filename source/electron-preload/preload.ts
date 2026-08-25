@@ -264,6 +264,8 @@ export function createDesktopPreloadBridge(options: {
       setInferenceRouter: (provider: string) => edge("setInferenceRouter", { provider }),
       getBoxRuntime: () => edge("getBoxRuntime"),
       setBoxRuntime: (mode: string) => edge("setBoxRuntime", { mode }),
+      getSshRuntime: () => edge("getSshRuntime"),
+      installSshRuntime: (host: string) => edge("installSshRuntime", { host }),
       clientPersistence: {
         read: (key: string) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.read, { key }),
         async write(key: string, value: string) { await ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.write, { key, value }); },

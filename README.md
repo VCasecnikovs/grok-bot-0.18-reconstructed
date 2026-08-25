@@ -16,7 +16,8 @@ It also adds a few practical experiments:
 - an inference router for Cursor, Claude Code, Codex, and OpenRouter;
 - Grok Bot plugin/MCP tools across the routed providers;
 - local usage tracking for routed inference;
-- an optional local Docker sandbox in place of the remote box; and
+- an optional local Docker sandbox in place of the remote box;
+- one-click deployment of the remote runtime to an SSH server; and
 - a reconstructed settings surface integrated into the polished shipped UI.
 
 This is a hacking and research project, not Anysphere's original monorepo and
@@ -115,45 +116,42 @@ The container:
 Docker Desktop, or another compatible local Docker daemon, must be running.
 Remote mode remains the default.
 
-### Mac client with a Bakeneko runtime
+### Install the remote runtime from the app
 
-The verified split deployment keeps the Electron client on the Mac and runs the
-Grok Bot host, tools, desktop, and Codex router in a persistent Docker container
-on an x86_64 Bakeneko host. Gateway and noVNC ports bind only to Bakeneko's
-Tailscale address and the gateway requires a generated bearer token. The
-official Grok Bot application is not modified.
+The Electron client stays on the Mac while Grok Bot's host, tools, computer,
+and Codex router run in a persistent Docker container on an SSH server.
 
-On a blank clone, first sign in to Codex on Bakeneko, then run the installer on
-the Mac:
+1. Sign in with Codex on the Mac and make sure key-based `ssh server` works.
+2. Open **Settings → Router → Remote server**.
+3. Enter an SSH alias, hostname, or `user@host`, then click **Install**.
 
-```sh
-ssh -t bakeneko codex login
-npm run install:bakeneko -- bakeneko
-```
+The server only needs x86_64 Linux and Docker available to the SSH user. It does
+not need this repository, Node.js, npm, or a separate Codex login: the app
+uploads its packaged runtime and, when necessary, the Mac's existing Codex
+authentication over SSH. Custom ports and identity files belong in
+`~/.ssh/config`.
 
-The installer bootstraps and verifies the pinned app, installs
-`/Applications/Grok Bot 0.18 Reconstructed.app`, deploys the clean host bundles,
-creates persistent remote data and writable Codex auth directories, starts the
-`grok-bot-bakeneko` container with `unless-stopped`, and writes the tokenized
-Mac connection with mode `remote` and provider `codex`. It is idempotent and
-preserves the remote conversation data and gateway token across redeploys.
-Close the reconstructed client before redeploying it.
+Remote services bind only to the server's loopback interface. The app creates
+and owns an authenticated SSH tunnel for the gateway, browser, and noVNC
+desktop, reconnects it after relaunch, and preserves remote workspaces,
+conversations, Codex authentication, and the gateway token across reinstalls.
+The first install can take a few minutes while Docker downloads the image;
+cached reinstalls are much faster.
 
-Use `GROK_BOT_REMOTE_IP` when the SSH host does not expose `tailscale ip -4`.
-The remote app/data roots and container name can be overridden with
-`GROK_BOT_REMOTE_APP_ROOT`, `GROK_BOT_REMOTE_DATA_ROOT`, and
-`GROK_BOT_REMOTE_CONTAINER`.
+The older source-tree installer remains available as
+`npm run install:bakeneko -- bakeneko` for development and recovery.
 
 ## Requirements
 
-- macOS on Apple Silicon
-- Node.js 26.5.x
-- Xcode Command Line Tools
-- Git LFS
-- Docker Desktop (optional, only for the local sandbox)
-- local Claude Code or Codex authentication for those router choices
-- `jq`, `rsync`, SSH, and Tailscale access for the Bakeneko split deployment
-- x86_64 Linux, Docker, OpenSSL, and a Codex login on Bakeneko
+To run a packaged app with an SSH server:
+
+- macOS on Apple Silicon with Codex signed in;
+- key-based SSH access; and
+- an x86_64 Linux server where Docker is available to the SSH user.
+
+Building from source additionally requires Node.js 26.5.x, Xcode Command Line
+Tools, and Git LFS. Docker Desktop is optional and only needed for the local
+sandbox.
 
 ## Quick start
 
@@ -165,7 +163,7 @@ git lfs pull
 npm ci
 npm run bootstrap
 npm run check
-npm run package
+npm run package:zip
 open "dist/Grok Bot 0.18 Reconstructed.app"
 ```
 
@@ -183,6 +181,10 @@ bundle identity, ad-hoc signs it, and verifies the result. Output is written to:
 dist/Grok Bot 0.18 Reconstructed.app
 ```
 
+`npm run package:zip` also creates `dist/Grok Bot 0.18 Reconstructed.zip` for
+copying to another Mac. Public distribution still requires Developer ID
+signing and Apple notarization; the default development build is ad-hoc signed.
+
 Reconstructed packages disable the upstream updater at the packaging boundary
 and default upstream Sentry and telemetry emission off. Explicitly supplied
 environment configuration is still respected.
@@ -197,7 +199,7 @@ polished shipped renderer
      Electron main
           │
           ├── settings, secrets, auth and plugin lifecycle
-          ├── remote box connector
+          ├── remote box connector + SSH installer/tunnel
           └── owned local Docker connector
                        │
                        ▼
@@ -235,6 +237,7 @@ npm run typecheck         # renderer TypeScript
 npm run source:typecheck  # runtime TypeScript
 npm run frontend:build    # build the readable renderer reconstruction
 npm run package           # build, sign, and verify the macOS app
+npm run package:zip       # package a copyable app archive
 npm run verify            # verify an existing packaged app
 npm run smoke             # bounded native smoke check
 npm run publication:check # prove a fresh-history export is lossless
@@ -246,10 +249,10 @@ Generated directories including `.cache`, `.build`, `dist`, `src/app/dist`,
 ## Project status
 
 The app launches and the core reconstructed flows are usable, including routed
-inference, connected plugins, and the local Docker sandbox. This is still an
-experimental reconstruction: it targets one pinned macOS/arm64 release, depends
-on external provider sessions, and does not promise compatibility with future
-Grok Bot versions.
+inference, connected plugins, the local Docker sandbox, and in-app SSH server
+deployment. This is still an experimental reconstruction: it targets one pinned
+macOS/arm64 release, depends on external provider sessions, and does not promise
+compatibility with future Grok Bot versions.
 
 For changes, read [CONTRIBUTING.md](CONTRIBUTING.md). For the clean-history
 export procedure, see [docs/PUBLISHING.md](docs/PUBLISHING.md). Technical

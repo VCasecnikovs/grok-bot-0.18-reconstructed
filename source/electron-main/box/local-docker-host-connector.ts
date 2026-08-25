@@ -1,14 +1,15 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 import type { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
 import type { SandRemoteHostConnector } from "./box-host-connector.js";
 import { parsePersistedGatewayConnection, type GatewayConnection } from "./gateway-descriptor-cache.js";
+import { stageCurrentHostBundle } from "./host-runtime-bundle.js";
+import { ensureSshGatewayTunnel, parseSshGatewaySettings, SSH_REMOTE_CONFIG_FILENAME } from "./ssh-remote-host-installer.js";
 
 export const LOCAL_DOCKER_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
 export const LOCAL_DOCKER_BOX_CONTAINER = "grok-bot-local-vm";
@@ -17,7 +18,6 @@ export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
 export const LOCAL_DOCKER_SCHEMA_VERSION = "7";
 const READY_TIMEOUT_MS = 180_000;
 const OPTIONAL_CREDENTIAL_TIMEOUT_MS = 3_000;
-const SELF_HOSTED_GATEWAY_CONFIG = "self-hosted-gateway.json";
 
 export interface LocalDockerStatus {
   readonly available: boolean;
@@ -30,7 +30,6 @@ export interface LocalDockerStatus {
 
 interface CommandResult { readonly ok: boolean; readonly output: string }
 interface InferenceCredential { readonly accessToken: string; readonly backendUrl: string; readonly expiresAtMs: number }
-interface LocalHostBundle { readonly path: string; readonly sha256: string; readonly boxExecDaemonPath: string; readonly boxExecDaemonSha256: string }
 
 function runDocker(args: readonly string[]): Promise<CommandResult> {
   return new Promise((resolve) => {
@@ -53,7 +52,7 @@ function inferenceCredentialPath(settingsPath: string): string {
 }
 
 async function readSelfHostedGateway(settingsPath: string): Promise<GatewayConnection | null> {
-  const path = join(dirname(settingsPath), SELF_HOSTED_GATEWAY_CONFIG);
+  const path = join(dirname(settingsPath), SSH_REMOTE_CONFIG_FILENAME);
   let raw: string;
   try { raw = await readFile(path, "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
@@ -63,6 +62,8 @@ async function readSelfHostedGateway(settingsPath: string): Promise<GatewayConne
   if (connection == null) throw new Error(`${path} does not contain a valid gateway connection.`);
   const protocol = URL.parse(connection.baseUrl)?.protocol;
   if (protocol !== "http:" && protocol !== "https:") throw new Error(`${path} must use an HTTP or HTTPS gateway URL.`);
+  const ssh = parseSshGatewaySettings(parsed);
+  if (ssh != null) await ensureSshGatewayTunnel(connection, ssh);
   return connection;
 }
 
@@ -143,43 +144,6 @@ let ensureInFlight: Promise<GatewayConnection> | undefined;
 
 async function isDirectory(path: string): Promise<boolean> {
   try { return (await stat(path)).isDirectory(); } catch { return false; }
-}
-
-async function stageCurrentHostBundle(settingsPath: string): Promise<LocalHostBundle> {
-  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-  const readRuntime = async (relative: string): Promise<Buffer> => {
-    const candidates = [resolve(moduleDirectory, `../${relative}`), resolve(moduleDirectory, `../../${relative}`)];
-    for (const candidate of candidates) {
-      try { return await readFile(candidate); } catch {}
-    }
-    throw new Error(`The reconstructed runtime is unavailable at ${candidates.join(" or ")}; refusing to start a stock local VM.`);
-  };
-  const hostBytes = await readRuntime("host/host-main.cjs");
-  const boxExecDaemonBytes = await readRuntime("box-exec-daemon/main.cjs");
-  const sha256 = createHash("sha256").update(hostBytes).digest("hex");
-  const boxExecDaemonSha256 = createHash("sha256").update(boxExecDaemonBytes).digest("hex");
-  const directory = join(dirname(settingsPath), "local-docker-runtime", `${sha256}-${boxExecDaemonSha256}`);
-  const persistRuntime = async (name: string, bytes: Buffer): Promise<string> => {
-    const target = join(directory, name);
-    await mkdir(dirname(target), { recursive: true });
-    try {
-      const existing = await readFile(target);
-      if (!existing.equals(bytes)) throw new Error(`Content-addressed local runtime ${target} has unexpected bytes.`);
-    } catch (error) {
-      if (error instanceof Error && !Reflect.has(error, "code")) throw error;
-      const temporary = `${target}.${process.pid}.tmp`;
-      await writeFile(temporary, bytes, { mode: 0o600 });
-      await rename(temporary, target);
-    }
-    return target;
-  };
-  await mkdir(directory, { recursive: true });
-  return {
-    path: await persistRuntime("host-main.cjs", hostBytes),
-    sha256,
-    boxExecDaemonPath: await persistRuntime("box-exec-daemon/main.cjs", boxExecDaemonBytes),
-    boxExecDaemonSha256,
-  };
 }
 
 async function localAuthMountArguments(): Promise<string[]> {
