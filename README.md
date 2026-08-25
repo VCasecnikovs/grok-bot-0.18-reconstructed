@@ -115,6 +115,35 @@ The container:
 Docker Desktop, or another compatible local Docker daemon, must be running.
 Remote mode remains the default.
 
+### Mac client with a Bakeneko runtime
+
+The verified split deployment keeps the Electron client on the Mac and runs the
+Grok Bot host, tools, desktop, and Codex router in a persistent Docker container
+on an x86_64 Bakeneko host. Gateway and noVNC ports bind only to Bakeneko's
+Tailscale address and the gateway requires a generated bearer token. The
+official Grok Bot application is not modified.
+
+On a blank clone, first sign in to Codex on Bakeneko, then run the installer on
+the Mac:
+
+```sh
+ssh -t bakeneko codex login
+npm run install:bakeneko -- bakeneko
+```
+
+The installer bootstraps and verifies the pinned app, installs
+`/Applications/Grok Bot 0.18 Reconstructed.app`, deploys the clean host bundles,
+creates persistent remote data and writable Codex auth directories, starts the
+`grok-bot-bakeneko` container with `unless-stopped`, and writes the tokenized
+Mac connection with mode `remote` and provider `codex`. It is idempotent and
+preserves the remote conversation data and gateway token across redeploys.
+Close the reconstructed client before redeploying it.
+
+Use `GROK_BOT_REMOTE_IP` when the SSH host does not expose `tailscale ip -4`.
+The remote app/data roots and container name can be overridden with
+`GROK_BOT_REMOTE_APP_ROOT`, `GROK_BOT_REMOTE_DATA_ROOT`, and
+`GROK_BOT_REMOTE_CONTAINER`.
+
 ## Requirements
 
 - macOS on Apple Silicon
@@ -123,6 +152,8 @@ Remote mode remains the default.
 - Git LFS
 - Docker Desktop (optional, only for the local sandbox)
 - local Claude Code or Codex authentication for those router choices
+- `jq`, `rsync`, SSH, and Tailscale access for the Bakeneko split deployment
+- x86_64 Linux, Docker, OpenSSL, and a Codex login on Bakeneko
 
 ## Quick start
 

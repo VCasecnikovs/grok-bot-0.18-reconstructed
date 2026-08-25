@@ -188,6 +188,7 @@ test("Router settings use the trusted backend and display recorded inference usa
 
 test("local Docker provisioning is single-flight across settings and coordinator retries", async () => {
   const localDocker = await readFile(path.join(repoRoot, "source", "electron-main", "box", "local-docker-host-connector.ts"), "utf8");
+  const bakenekoInstaller = await readFile(path.join(repoRoot, "scripts", "install-split-bakeneko.sh"), "utf8");
   // Regression: toggling local Docker while the coordinator retried launched two competing `docker run` processes, 2026-08-25.
   assert.match(localDocker, /startLocalDockerBoxOnce\(settingsPath\)/);
   assert.match(localDocker, /startLocalDockerBoxOnce\(settings\.settingsPath, async \(\) =>/);
@@ -199,6 +200,11 @@ test("local Docker provisioning is single-flight across settings and coordinator
   assert.match(localDocker, /LOCAL_DOCKER_SCHEMA_VERSION = "7"/);
   assert.match(localDocker, /SELF_HOSTED_GATEWAY_CONFIG = "self-hosted-gateway\.json"/);
   assert.match(localDocker, /parsePersistedGatewayConnection\(parsed\)/);
+  assert.match(bakenekoInstaller, /--restart unless-stopped/);
+  assert.match(bakenekoInstaller, /SAND_AUTO_REVIEW_MODE=off/);
+  assert.match(bakenekoInstaller, /--volume "\$data_root\/codex-home:\/root\/\.codex"/);
+  assert.match(bakenekoInstaller, /--publish "\$remote_ip:1340:1340"/);
+  assert.match(bakenekoInstaller, /self-hosted-gateway\.json/);
 });
 
 test("the reconstructed app uses its own macOS secure-storage identity", async () => {
