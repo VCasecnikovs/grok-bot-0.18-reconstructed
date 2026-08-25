@@ -5,6 +5,7 @@ import {
   outputDir,
   reconstructedBundleId,
   reconstructedName,
+  repoRoot,
   sourceAppDir,
 } from "./lib/config.mjs";
 import { buildFidelityReconstructedAsar } from "./clean-build.mjs";
@@ -39,6 +40,7 @@ await run(SYSTEM_TOOLS.xattr, ["-cr", outputApp]);
 const resources = path.join(outputApp, "Contents", "Resources");
 const packagedAsar = path.join(resources, "app.asar");
 const packagedUnpacked = `${packagedAsar}.unpacked`;
+await cp(path.join(repoRoot, "assets", "grok-bot-red-icon.icns"), path.join(resources, "icon.icns"));
 await rm(packagedAsar, { force: true });
 await rm(packagedUnpacked, { recursive: true, force: true });
 await cp(builtAsar, packagedAsar);
