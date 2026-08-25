@@ -128,7 +128,7 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(localDocker, /"127\.0\.0\.1:1340:1340"/);
   assert.match(localDocker, /SAND_BOX_AUTO_UPDATE=0/);
   assert.match(localDocker, /dst=\/home\/box\/sand-host\/host-main\.cjs,readonly/);
-  assert.match(localDocker, /\.getBoxRuntime\(\) === "local-docker" \? await localConnect\(\) : await remote\.connect\(\)/);
+  assert.match(localDocker, /\.getBoxRuntime\(\) === "local-docker" \? await localConnect\(\) : await remoteConnect\(\)/);
   assert.match(inference, /recordInferenceUsage\(provider/);
   assert.match(inference, /routerSettings\.getInferenceProvider\(\)/);
   assert.match(inference, /typeof extendedUsage\.then === "function"/);
@@ -197,6 +197,8 @@ test("local Docker provisioning is single-flight across settings and coordinator
   // Regression: QEMU-prefixed argv made the upstream desktop supervisor restart a healthy router forever, 2026-08-25.
   assert.match(localDocker, /SAND_DESKTOP_SUPERVISION_DISABLED=1/);
   assert.match(localDocker, /LOCAL_DOCKER_SCHEMA_VERSION = "7"/);
+  assert.match(localDocker, /SELF_HOSTED_GATEWAY_CONFIG = "self-hosted-gateway\.json"/);
+  assert.match(localDocker, /parsePersistedGatewayConnection\(parsed\)/);
 });
 
 test("the reconstructed app uses its own macOS secure-storage identity", async () => {

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
 import type { SandRemoteHostConnector } from "./box-host-connector.js";
-import type { GatewayConnection } from "./gateway-descriptor-cache.js";
+import { parsePersistedGatewayConnection, type GatewayConnection } from "./gateway-descriptor-cache.js";
 
 export const LOCAL_DOCKER_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
 export const LOCAL_DOCKER_BOX_CONTAINER = "grok-bot-local-vm";
@@ -17,6 +17,7 @@ export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
 export const LOCAL_DOCKER_SCHEMA_VERSION = "7";
 const READY_TIMEOUT_MS = 180_000;
 const OPTIONAL_CREDENTIAL_TIMEOUT_MS = 3_000;
+const SELF_HOSTED_GATEWAY_CONFIG = "self-hosted-gateway.json";
 
 export interface LocalDockerStatus {
   readonly available: boolean;
@@ -49,6 +50,20 @@ function credentialPath(settingsPath: string): string {
 
 function inferenceCredentialPath(settingsPath: string): string {
   return join(dirname(settingsPath), "local-docker-credential", "inference.json");
+}
+
+async function readSelfHostedGateway(settingsPath: string): Promise<GatewayConnection | null> {
+  const path = join(dirname(settingsPath), SELF_HOSTED_GATEWAY_CONFIG);
+  let raw: string;
+  try { raw = await readFile(path, "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error(`${path} is not valid JSON.`); }
+  const connection = parsePersistedGatewayConnection(parsed);
+  if (connection == null) throw new Error(`${path} does not contain a valid gateway connection.`);
+  const protocol = URL.parse(connection.baseUrl)?.protocol;
+  if (protocol !== "http:" && protocol !== "https:") throw new Error(`${path} must use an HTTP or HTTPS gateway URL.`);
+  return connection;
 }
 
 async function writeIsolatedDockerConfig(settingsPath: string): Promise<string> {
@@ -263,8 +278,9 @@ export function createSettingsRoutedHostConnector(
     ]);
     return issued;
   });
+  const remoteConnect = async (): Promise<GatewayConnection> => await readSelfHostedGateway(settings.settingsPath) ?? await remote.connect();
   return {
-    connect: async () => settings.getBoxRuntime() === "local-docker" ? await localConnect() : await remote.connect(),
+    connect: async () => settings.getBoxRuntime() === "local-docker" ? await localConnect() : await remoteConnect(),
     ...(remote.issueLocalExecDaemonCredential == null ? {} : { issueLocalExecDaemonCredential: remote.issueLocalExecDaemonCredential.bind(remote) }),
     ...(remote.issueInferenceCredential == null ? {} : { issueInferenceCredential: remote.issueInferenceCredential.bind(remote) }),
     recreate: async (args): Promise<RecreateResult> => {
