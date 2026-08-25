@@ -86,6 +86,33 @@ test("direct Codex Responses transport executes Grok Bot tools and continues wit
   assert.deepEqual(events.at(-1), { type: "done", text: "Subject", responseId: "resp-final", usage: { inputTokens: 28, outputTokens: 6, cacheReadTokens: 6, cacheWriteTokens: 0 } });
 });
 
+test("direct Codex Responses transport hands native tools back to Grok Bot's host loop", async () => {
+  const { codexInputFromMessages, streamCodexDirectResponses } = await loadModule();
+  assert.deepEqual(codexInputFromMessages([
+    { role: "assistant", content: [{ type: "tool-call", toolCallId: "call-shell", toolName: "Shell", args: { command: "printf OK" } }] },
+    { role: "tool", content: [{ type: "tool-result", toolCallId: "call-shell", toolName: "Shell", result: "OK" }] },
+  ]), [
+    { type: "function_call", call_id: "call-shell", name: "Shell", arguments: JSON.stringify({ command: "printf OK" }) },
+    { type: "function_call_output", call_id: "call-shell", output: JSON.stringify("OK") },
+  ]);
+  const events = [];
+  for await (const event of streamCodexDirectResponses({
+    fetch: async () => sse([
+      { type: "response.output_item.done", item: { type: "function_call", call_id: "call-shell", name: "Shell", arguments: JSON.stringify({ command: "printf OK" }) } },
+      { type: "response.completed", response: { id: "resp-shell", output: [], usage: { input_tokens: 4, output_tokens: 1 } } },
+    ]),
+    endpoint: "https://example.invalid/responses",
+    model: "gpt-test",
+    instructions: "Use native tools",
+    input: [{ role: "user", content: "run it" }],
+    tools: [{ name: "Shell", parameters: { type: "object" }, source: {} }],
+  })) events.push(event);
+  assert.deepEqual(events, [
+    { type: "tool-call", toolCallId: "call-shell", toolName: "Shell", args: { command: "printf OK" } },
+    { type: "done", text: "", responseId: "resp-shell", usage: { inputTokens: 4, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } },
+  ]);
+});
+
 test("direct Codex Responses transport fails closed on a truncated stream", async () => {
   const { streamCodexDirectResponses } = await loadModule();
   await assert.rejects(async () => {

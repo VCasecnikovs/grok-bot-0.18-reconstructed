@@ -97,6 +97,7 @@ test("Router settings use the trusted backend and display recorded inference usa
   const turnShell = await readFile(path.join(repoRoot, "source", "host", "runner", "turn-run-shell.ts"), "utf8");
   const coordinator = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "inference-router.ts"), "utf8");
   const coordinatorMain = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "main.ts"), "utf8");
+  const coordinatorResync = await readFile(path.join(repoRoot, "source", "electron-main", "coordinator", "coordinator-resync.ts"), "utf8");
   const mcpBridge = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "routed-mcp-bridge.ts"), "utf8");
   const localDocker = await readFile(path.join(repoRoot, "source", "electron-main", "box", "local-docker-host-connector.ts"), "utf8");
   assert.match(rendererPatch, /desktop\.agent\.getInferenceRouter\(\)/);
@@ -154,7 +155,8 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.doesNotMatch(rendererPatch, /ANTHROPIC_API_KEY|OPENAI_API_KEY/);
   assert.match(turnShell, /inferenceProvider === "cursor"/);
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider\)/);
-  assert.match(coordinator, /method !== "sendPrompt" \|\| provider === "cursor"/);
+  assert.match(coordinator, /method === "sendPrompt"\) return \{ handled: false \}/);
+  assert.match(coordinatorResync, /"inference_provider".*inferenceProvider: deps\.getInferenceProvider\(\)/);
   assert.match(coordinator, /executeTool: async \(definition, toolArgs, toolCallId\)/);
   assert.match(coordinatorMain, /command\(commands, "listRoutedMcpTools", args\)/);
   assert.match(coordinator, /inference-router-transcript\.json/);

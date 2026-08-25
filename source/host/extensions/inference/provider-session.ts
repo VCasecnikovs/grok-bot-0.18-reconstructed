@@ -12,7 +12,7 @@ import { resolveClaudeCodeCliPath } from "../../../shared/node/inference-router-
 import { getSandRootDir } from "../../host-paths.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
-import { streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
+import { codexInputFromMessages, streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
 
 type Loose = Record<string, any>;
@@ -58,8 +58,8 @@ function providerPrompt(messages: readonly ProviderMessage[]): string {
 
 function deferred<T>() { return Promise.withResolvers<T>(); }
 
-function response(text: string, id: string, modelId: string) {
-  return { id, modelId, timestamp: new Date(), headers: {}, messages: [{ role: "assistant", content: [{ type: "text", text }] }] };
+function response(text: string, id: string, modelId: string, toolCalls: readonly Loose[] = []) {
+  return { id, modelId, timestamp: new Date(), headers: {}, messages: [{ role: "assistant", content: [...(text.length === 0 ? [] : [{ type: "text", text }]), ...toolCalls] }] };
 }
 
 type CodexCredentials = { accessToken: string; refreshToken: string; idToken: string; accountId: string; path: string; document: Loose };
@@ -174,6 +174,7 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
   const tools = codexTools(definitions);
   const fullStream = (async function* () {
     let text = "";
+    const toolCalls: Loose[] = [];
     try {
       for await (const event of streamCodexDirectResponses({
         fetch: codexAuthenticatedFetch(credentials),
@@ -181,19 +182,20 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
         model,
         ...(configuredCodexReasoningEffort() == null ? {} : { reasoningEffort: configuredCodexReasoningEffort()! }),
         instructions: GROK_ROUTER_SYSTEM_PROMPT,
-        input: messages.map(message => ({ role: message.role === "assistant" ? "assistant" : "user", content: typeof message.content === "string" ? message.content : JSON.stringify(message.content) })),
+        input: codexInputFromMessages(messages),
         ...(tools == null ? {} : { tools }),
         ...(executeTool == null ? {} : { executeTool: async (selected, args, toolCallId) => await executeTool(selected.source, args, toolCallId) }),
         maxSteps: tools == null ? 1 : 8,
       })) {
         if (event.type === "text-delta") { text += event.delta; yield { type: "text-delta" as const, textDelta: event.delta }; continue; }
+        if (event.type === "tool-call") { const call = { type: "tool-call" as const, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args }; toolCalls.push(call); yield call; continue; }
         const basic = { promptTokens: event.usage.inputTokens, completionTokens: event.usage.outputTokens, totalTokens: event.usage.inputTokens + event.usage.outputTokens };
         const extended = { ...event.usage, maxTokens: 0 };
         onUsage?.(event.usage);
         usage.resolve(basic);
         extendedUsage.resolve(extended);
         metadata.resolve({ openai: { responseId: event.responseId, direct: true } });
-        resultResponse.resolve(response(text, invocationId, model));
+        resultResponse.resolve(response(text, invocationId, model, toolCalls));
       }
     } catch (error) { usage.reject(error); extendedUsage.reject(error); metadata.reject(error); resultResponse.reject(error); throw error; }
   })();

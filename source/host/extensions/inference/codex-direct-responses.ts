@@ -16,6 +16,7 @@ export type CodexDirectTool = {
 
 export type CodexDirectEvent =
   | { readonly type: "text-delta"; readonly delta: string }
+  | { readonly type: "tool-call"; readonly toolCallId: string; readonly toolName: string; readonly args: unknown }
   | { readonly type: "done"; readonly text: string; readonly responseId: string; readonly usage: CodexDirectUsage };
 
 export type CodexDirectOptions = {
@@ -37,6 +38,22 @@ function record(value: unknown): Loose | null {
 function safeJson(value: unknown): string {
   try { return JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item) ?? "null"; }
   catch (error) { return JSON.stringify({ isError: true, error: error instanceof Error ? error.message : String(error) }); }
+}
+
+export function codexInputFromMessages(messages: readonly Loose[]): Loose[] {
+  return messages.flatMap<Loose>(message => {
+    const role = message.role === "assistant" ? "assistant" : "user";
+    if (typeof message.content === "string") return [{ role, content: message.content }];
+    if (!Array.isArray(message.content)) return [];
+    const items = message.content.flatMap<Loose>(raw => {
+      const part = record(raw);
+      if (part?.type === "text" && typeof part.text === "string") return [{ role, content: part.text }];
+      if (part?.type === "tool-call" && typeof part.toolCallId === "string" && typeof part.toolName === "string") return [{ type: "function_call", call_id: part.toolCallId, name: part.toolName, arguments: safeJson(part.args ?? {}) }];
+      if (part?.type === "tool-result" && typeof part.toolCallId === "string") return [{ type: "function_call_output", call_id: part.toolCallId, output: safeJson(part.result) }];
+      return [];
+    });
+    return items.length > 0 ? items : [{ role, content: safeJson(message.content) }];
+  });
 }
 
 async function responseError(response: Response): Promise<Error> {
@@ -159,7 +176,16 @@ export async function* streamCodexDirectResponses(options: CodexDirectOptions): 
       yield { type: "done", text, responseId, usage };
       return;
     }
-    if (options.executeTool == null) throw new Error("Codex requested a tool but Grok Bot did not provide an executor.");
+    if (options.executeTool == null) {
+      for (const call of calls) {
+        let args: unknown = {};
+        try { args = typeof call.arguments === "string" && call.arguments.length > 0 ? JSON.parse(call.arguments) : {}; }
+        catch { args = call.arguments; }
+        yield { type: "tool-call", toolCallId: call.call_id, toolName: call.name, args };
+      }
+      yield { type: "done", text, responseId, usage };
+      return;
+    }
 
     const results: Loose[] = [];
     for (const call of calls) {

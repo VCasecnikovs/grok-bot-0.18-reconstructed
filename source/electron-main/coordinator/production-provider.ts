@@ -166,6 +166,7 @@ export interface ProductionCoordinatorPorts<Status extends ProductionCoordinator
     getComputerUseModel(): unknown;
     getAutoReviewInstructions(): unknown;
     getLocalToolPermission(): unknown;
+    getInferenceProvider(): unknown;
     getWebauthnProxyEnabled(): unknown;
     getFeatureFlagOverrides(): unknown;
     pushBoxSecrets(): Promise<unknown>;
@@ -287,6 +288,7 @@ function validateProductionPorts<Status extends ProductionCoordinatorAuthStatus>
     ports.resync?.getLocalToolPermission,
     "local-tool permission reader",
   );
+  requiredFunction(ports.resync?.getInferenceProvider, "inference-provider reader");
   requiredFunction(
     ports.resync?.getWebauthnProxyEnabled,
     "WebAuthn proxy enablement reader",

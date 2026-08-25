@@ -37,6 +37,7 @@ export interface ProductionCoordinatorAuxiliaryPorts {
     | "getComputerUseModel"
     | "getAutoReviewInstructions"
     | "getLocalToolPermission"
+    | "getInferenceProvider"
     | "getWebauthnProxyEnabled"
     | "getFeatureFlagOverrides"
     | "pushBoxSecrets"
@@ -124,6 +125,7 @@ export function createProductionCoordinatorAuxiliaryPorts(
       getComputerUseModel: () => computerUseModel(context),
       getAutoReviewInstructions: () => settings.getAutoReviewInstructions(),
       getLocalToolPermission: () => settings.getLocalToolPermission(),
+      getInferenceProvider: () => settings.getInferenceProvider(),
       getWebauthnProxyEnabled: () => settings.getWebauthnProxyEnabled(),
       getFeatureFlagOverrides: () => context.requireExperiments().getFeatureFlagOverridesRecord(),
       pushBoxSecrets: () => context.secretsStores.pushBoxSecrets.push("resync"),
