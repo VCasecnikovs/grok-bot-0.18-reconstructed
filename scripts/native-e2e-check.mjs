@@ -26,8 +26,7 @@ export const REQUIRED_PACKAGED_ARTIFACTS = Object.freeze([
   "dist/node-agent-coordinator/main.cjs",
   "dist/host/host-main.cjs",
   "dist/local-exec-daemon/main.cjs",
-  "dist/renderer/index.html",
-  "dist/renderer/renderer-source-provenance.json"
+  "dist/renderer/index.html"
 ]);
 
 export const PRODUCTION_ENTRYPOINTS = Object.freeze({
@@ -366,6 +365,33 @@ export async function verifyEntrypointGraph({ readArtifact, immutableRoot, sourc
         continue;
       }
       const provenance = artifactProvenance(manifest, role, rendererArtifact);
+      if (provenance.mode === "checksum-pinned-artifact-runtime") {
+        try {
+          const artifactProvenance = JSON.parse((await readArtifact("dist/renderer-artifact-provenance.json")).toString("utf8"));
+          const extension = JSON.parse((await readArtifact("dist/renderer-router-extension.json")).toString("utf8"));
+          if (artifactProvenance.schemaVersion !== 1 || artifactProvenance.mode !== provenance.mode || artifactProvenance.hashAlgorithm !== "sha256" || !Array.isArray(artifactProvenance.files)) throw new Error("invalid renderer artifact provenance");
+          if (extension.schemaVersion !== 1 || extension.mode !== "original-renderer-settings-extension" || !Array.isArray(extension.chunks) || extension.chunks.length === 0) throw new Error("invalid Router extension provenance");
+          const declared = new Map(artifactProvenance.files.map(file => [file.path, file]));
+          const patched = new Map();
+          for (const chunk of extension.chunks) {
+            const relative = typeof chunk.path === "string" && chunk.path.startsWith("dist/renderer/") ? chunk.path.slice("dist/renderer/".length) : null;
+            const original = relative == null ? null : declared.get(relative);
+            if (original == null || chunk.original?.bytes !== original.bytes || chunk.original?.sha256 !== original.sha256) throw new Error(`invalid Router extension source identity at ${String(relative)}`);
+            patched.set(relative, chunk.patched);
+          }
+          for (const [relative, original] of declared) {
+            const actual = await readArtifact(`dist/renderer/${relative}`);
+            const expected = patched.get(relative) ?? original;
+            if (actual.byteLength !== expected.bytes || sha256(actual) !== expected.sha256) throw new Error(`renderer inventory drift at ${relative}`);
+          }
+          const entryRelative = rendererArtifact.slice("dist/renderer/".length);
+          if (!declared.has(entryRelative)) throw new Error(`renderer entrypoint is undeclared: ${entryRelative}`);
+          diagnostics.push({ check: "entrypoint:renderer", status: "pass", detail: `Renderer index resolves verified checksum-pinned script ${rendererArtifact} with the Router extension` });
+        } catch (error) {
+          diagnostics.push({ check: "entrypoint:renderer", status: "fail", detail: `Checksum-pinned renderer verification failed: ${error instanceof Error ? error.message : String(error)}` });
+        }
+        continue;
+      }
       let rendererRuntimeProvenance = null;
       try { rendererRuntimeProvenance = JSON.parse((await readArtifact("dist/renderer/renderer-source-provenance.json")).toString("utf8")); }
       catch {}
@@ -481,6 +507,10 @@ export async function inspectPackagedArtifacts(payload) {
   const diagnostics = REQUIRED_PACKAGED_ARTIFACTS.map((required) => listing.has(required)
     ? { check: `artifact:${required}`, status: "pass", detail: "present" }
     : { check: `artifact:${required}`, status: "fail", detail: `Missing required packaged artifact ${required}` });
+  const rendererProvenance = ["dist/renderer/renderer-source-provenance.json", "dist/renderer-artifact-provenance.json"].find(candidate => listing.has(candidate));
+  diagnostics.push(rendererProvenance == null
+    ? { check: "artifact:renderer-provenance", status: "fail", detail: "Missing clean-source or checksum-pinned renderer provenance" }
+    : { check: "artifact:renderer-provenance", status: "pass", detail: rendererProvenance });
   try {
     const packageJson = JSON.parse((await payload.read("package.json")).toString("utf8"));
     diagnostics.push(packageJson.main === PRODUCTION_ENTRYPOINTS.main

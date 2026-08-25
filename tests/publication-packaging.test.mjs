@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import createIgnore from "ignore";
 
+import { verifyEntrypointGraph } from "../scripts/native-e2e-check.mjs";
 import { resolvePackagedAppArtifacts } from "../scripts/lib/packaged-app.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -31,8 +33,56 @@ test("publication ignore rules retain reconstructed frontend source", async () =
 
 test("default packaging keeps the polished checksum-pinned renderer", async () => {
   const source = await readFile(path.join(repoRoot, "scripts", "package-macos.mjs"), "utf8");
+  const verifier = await readFile(path.join(repoRoot, "scripts", "verify.mjs"), "utf8");
   assert.match(source, /import \{ buildFidelityReconstructedAsar \} from "\.\/clean-build\.mjs"/);
   assert.match(source, /await buildFidelityReconstructedAsar\(\)/);
+  assert.match(source, /verifyChecksumPinnedRendererPackage/);
+  assert.match(verifier, /verifyChecksumPinnedRendererPackage/);
+});
+
+test("native smoke accepts a checksum-pinned renderer with a verified Router patch", async () => {
+  // Regression: fidelity packaging gained a patched renderer, but smoke still required clean-source provenance, 2026-08-25.
+  const sha256 = value => createHash("sha256").update(value).digest("hex");
+  const original = Buffer.from("original renderer");
+  const patched = Buffer.from("patched renderer");
+  const manifest = {
+    runtimeComposition: [{
+      runtime: "renderer",
+      path: "dist/renderer",
+      mode: "checksum-pinned-artifact-runtime",
+      provenance: "dist/renderer-artifact-provenance.json",
+    }],
+    outputs: [],
+  };
+  const files = new Map([
+    ["dist/renderer/index.html", Buffer.from('<script type="module" src="./assets/index.js"></script>')],
+    ["dist/renderer/assets/index.js", patched],
+    ["dist/renderer-artifact-provenance.json", Buffer.from(JSON.stringify({
+      schemaVersion: 1,
+      mode: "checksum-pinned-artifact-runtime",
+      hashAlgorithm: "sha256",
+      files: [{ path: "assets/index.js", bytes: original.length, sha256: sha256(original) }],
+    }))],
+    ["dist/renderer-router-extension.json", Buffer.from(JSON.stringify({
+      schemaVersion: 1,
+      mode: "original-renderer-settings-extension",
+      chunks: [{
+        role: "panel",
+        path: "dist/renderer/assets/index.js",
+        original: { bytes: original.length, sha256: sha256(original) },
+        patched: { bytes: patched.length, sha256: sha256(patched) },
+      }],
+    }))],
+  ]);
+  const diagnostics = await verifyEntrypointGraph({
+    readArtifact: async relative => files.get(relative) ?? Promise.reject(new Error(`missing ${relative}`)),
+    provenanceManifest: manifest,
+  });
+  assert.deepEqual(diagnostics.find(({ check }) => check === "entrypoint:renderer"), {
+    check: "entrypoint:renderer",
+    status: "pass",
+    detail: "Renderer index resolves verified checksum-pinned script dist/renderer/assets/index.js with the Router extension",
+  });
 });
 
 test("Router settings use the trusted backend and display recorded inference usage", async () => {
