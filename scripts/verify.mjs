@@ -97,11 +97,19 @@ if (rendererMaps.length > 0) throw new Error(`Packaged renderer contains source 
 for (const relative of [
   "dist/node-deps/tree-sitter/build/Release/tree_sitter_runtime_binding.node",
   "dist/node-deps/tree-sitter-bash/build/Release/tree_sitter_bash_binding.node",
-  "dist/node-deps/node_modules/node-addon-api/package.json",
   "dist/node-deps/node_modules/node-gyp-build/package.json",
 ]) {
   if (!listing.has(`/${relative}`)) throw new Error(`ASAR is missing generated Node runtime entry ${relative}`);
   await requirePath(path.join(builtAsarUnpacked, relative));
+}
+const nodeRuntimeRoot = path.join(builtAsarUnpacked, "dist", "node-deps");
+const nodeRuntimeFiles = await walkFiles(nodeRuntimeRoot);
+const forbiddenNodeBuildFiles = nodeRuntimeFiles.filter(relative => /(?:^|\/)(?:Makefile|config\.gypi|[^/]*\.mk|[^/]*\.o|[^/]*\.a)$/.test(relative));
+if (forbiddenNodeBuildFiles.length > 0) throw new Error(`Packaged Node runtime contains build intermediates: ${forbiddenNodeBuildFiles.join(", ")}`);
+for (const relative of nodeRuntimeFiles) {
+  if ((await readFile(path.join(nodeRuntimeRoot, relative))).includes(Buffer.from(repoRoot))) {
+    throw new Error(`Packaged Node runtime leaks the local build path: ${relative}`);
+  }
 }
 
 const buildManifest = JSON.parse(extractFile(builtAsar, "dist/reconstruction-build.json").toString("utf8"));

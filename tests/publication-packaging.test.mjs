@@ -34,10 +34,13 @@ test("publication ignore rules retain reconstructed frontend source", async () =
 test("default packaging keeps the polished checksum-pinned renderer", async () => {
   const source = await readFile(path.join(repoRoot, "scripts", "package-macos.mjs"), "utf8");
   const verifier = await readFile(path.join(repoRoot, "scripts", "verify.mjs"), "utf8");
+  const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
   assert.match(source, /import \{ buildFidelityReconstructedAsar \} from "\.\/clean-build\.mjs"/);
   assert.match(source, /await buildFidelityReconstructedAsar\(\)/);
   assert.match(source, /verifyChecksumPinnedRendererPackage/);
   assert.match(verifier, /verifyChecksumPinnedRendererPackage/);
+  assert.match(packageJson.scripts["package:zip"], /\/usr\/bin\/zip -qryFS/);
+  assert.doesNotMatch(packageJson.scripts["package:zip"], /ditto/);
 });
 
 test("native smoke accepts a checksum-pinned renderer with a verified Router patch", async () => {

@@ -17,7 +17,7 @@
     "native:patch": "node scripts/apply-third-party-patches.mjs",
     "native:build:electron": "node scripts/build-tree-sitter-electron.mjs",
     "package": "npm run check && node scripts/package-macos.mjs",
-    "package:zip": "npm run package && ditto -c -k --sequesterRsrc --keepParent \"dist/Grok Bot 0.18 Reconstructed.app\" \"dist/Grok Bot 0.18 Reconstructed.zip\"",
+    "package:zip": "npm run package && cd dist && /usr/bin/zip -qryFS \"Grok Bot 0.18 Reconstructed.zip\" \"Grok Bot 0.18 Reconstructed.app\"",
     "package:diagnostic": "npm run check && node scripts/package-fidelity-diagnostic.mjs",
     "publication:check": "node scripts/verify-publication-tree.mjs",
     "postinstall": "node scripts/apply-third-party-patches.mjs",

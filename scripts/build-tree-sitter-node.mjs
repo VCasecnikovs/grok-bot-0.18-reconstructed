@@ -3,9 +3,25 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 import { repoRoot } from "./lib/config.mjs";
+import { run } from "./lib/process.mjs";
 
 const packages = ["tree-sitter", "tree-sitter-bash"];
 const dependencies = ["node-addon-api", "node-gyp-build"];
+const runtimeFiles = [
+  "tree-sitter/LICENSE",
+  "tree-sitter/index.js",
+  "tree-sitter/package.json",
+  "tree-sitter/build/Release/tree_sitter_runtime_binding.node",
+  "tree-sitter-bash/LICENSE",
+  "tree-sitter-bash/bindings/node/index.js",
+  "tree-sitter-bash/package.json",
+  "tree-sitter-bash/src/node-types.json",
+  "tree-sitter-bash/build/Release/tree_sitter_bash_binding.node",
+  "node-gyp-build/LICENSE",
+  "node-gyp-build/index.js",
+  "node-gyp-build/node-gyp-build.js",
+  "node-gyp-build/package.json",
+];
 
 function nodeRuntimeCacheRoot() {
   return path.join(repoRoot, ".cache", "tree-sitter-node", process.versions.modules, `${process.platform}-${process.arch}`);
@@ -69,12 +85,12 @@ export async function stageNodeTreeSitterRuntime(outputRoot) {
   const cacheRoot = await ensureNodeTreeSitterRuntime();
   const destination = path.join(outputRoot, "dist", "node-deps");
   await rm(destination, { recursive: true, force: true });
-  await mkdir(path.dirname(destination), { recursive: true });
-  await cp(cacheRoot, destination, { recursive: true, dereference: true });
-  const runtimeNodeModules = path.join(destination, "node_modules");
-  await mkdir(runtimeNodeModules, { recursive: true });
-  for (const packageName of dependencies) {
-    await cp(path.join(cacheRoot, packageName), path.join(runtimeNodeModules, packageName), { recursive: true, dereference: true });
+  for (const relative of runtimeFiles) {
+    const source = path.join(cacheRoot, relative);
+    const target = path.join(destination, relative.startsWith("node-gyp-build/") ? "node_modules" : "", relative);
+    await mkdir(path.dirname(target), { recursive: true });
+    await cp(source, target, { preserveTimestamps: true });
+    if (process.platform === "darwin" && relative.endsWith(".node")) await run("/usr/bin/strip", ["-S", target]);
   }
   return destination;
 }
