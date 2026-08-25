@@ -5,6 +5,7 @@ import {
   buildDir,
   builtAsar,
   builtAsarUnpacked,
+  reconstructedName,
   repoRoot,
   sourceAppDir,
   stagedAppDir
@@ -145,13 +146,12 @@ export async function buildAsar({
   await mkdir(buildRoot, { recursive: true });
   await cp(sourceAppDir, stageRoot, { recursive: true, dereference: false, preserveTimestamps: true });
 
-  if (process.env.GROK_BOT_BUILD_DEV_APP === "1") {
-    const stagedPackagePath = path.join(stageRoot, "package.json");
-    const stagedPackage = JSON.parse(await readFile(stagedPackagePath, "utf8"));
-    stagedPackage.sandLab = true;
-    stagedPackage.productName = "Grok Bot 0.18 Dev";
-    await writeFile(stagedPackagePath, `${JSON.stringify(stagedPackage, null, 2)}\n`);
-  }
+  const dev = process.env.GROK_BOT_BUILD_DEV_APP === "1";
+  const stagedPackagePath = path.join(stageRoot, "package.json");
+  const stagedPackage = JSON.parse(await readFile(stagedPackagePath, "utf8"));
+  if (dev) stagedPackage.sandLab = true;
+  stagedPackage.productName = dev ? "Grok Bot 0.18 Dev" : reconstructedName;
+  await writeFile(stagedPackagePath, `${JSON.stringify(stagedPackage, null, 2)}\n`);
 
   for (const directory of ["deps", "native"]) {
     const source = path.join(runtimeUnpacked, directory);
@@ -163,7 +163,6 @@ export async function buildAsar({
 
   const mainBundle = path.join(stageRoot, "dist", "electron-main", "main.cjs");
   let mainSource = await readFile(mainBundle, "utf8");
-  const dev = process.env.GROK_BOT_BUILD_DEV_APP === "1";
   mainSource = prepareReconstructedElectronMainArtifactFallback(mainSource, { dev });
   if (dev) console.log("Enabled reconstructed development seams (DevTools + control server).");
   await writeFile(mainBundle, mainSource);

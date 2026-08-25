@@ -181,3 +181,19 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(coordinatorMain, /createCoordinatorInferenceRouter/);
   assert.match(coordinatorMain, /routed\.handled/);
 });
+
+test("local Docker provisioning is single-flight across settings and coordinator retries", async () => {
+  const localDocker = await readFile(path.join(repoRoot, "source", "electron-main", "box", "local-docker-host-connector.ts"), "utf8");
+  // Regression: toggling local Docker while the coordinator retried launched two competing `docker run` processes, 2026-08-25.
+  assert.match(localDocker, /startLocalDockerBoxOnce\(settingsPath\)/);
+  assert.match(localDocker, /startLocalDockerBoxOnce\(settings\.settingsPath, async \(\) =>/);
+  // Regression: Docker Desktop's global credential helper blocked forever while pulling the public VM image, 2026-08-25.
+  assert.match(localDocker, /"--config", await writeIsolatedDockerConfig\(settingsPath\)/);
+  assert.match(localDocker, /\.\.\.await dockerHostArguments\(\), "run"/);
+});
+
+test("the reconstructed app uses its own macOS secure-storage identity", async () => {
+  const buildAsar = await readFile(path.join(repoRoot, "scripts", "lib", "build-asar.mjs"), "utf8");
+  // Regression: retaining the official product name made the ad-hoc build block on Grok Bot's Keychain item, 2026-08-25.
+  assert.match(buildAsar, /stagedPackage\.productName = dev \? "Grok Bot 0\.18 Dev" : reconstructedName/);
+});

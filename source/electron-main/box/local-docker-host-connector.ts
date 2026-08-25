@@ -51,6 +51,19 @@ function inferenceCredentialPath(settingsPath: string): string {
   return join(dirname(settingsPath), "local-docker-credential", "inference.json");
 }
 
+async function writeIsolatedDockerConfig(settingsPath: string): Promise<string> {
+  const directory = join(dirname(settingsPath), "local-docker-cli");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await writeFile(join(directory, "config.json"), "{}\n", { encoding: "utf8", mode: 0o600 });
+  return directory;
+}
+
+async function dockerHostArguments(): Promise<string[]> {
+  const inspected = await runDocker(["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"]).catch(() => ({ ok: false, output: "" }));
+  if (!inspected.ok || !inspected.output.startsWith("unix://")) throw new Error("Docker's current context does not expose a local Unix socket.");
+  return ["--host", inspected.output];
+}
+
 async function persistInferenceCredential(settingsPath: string, credential: InferenceCredential): Promise<string> {
   const target = inferenceCredentialPath(settingsPath);
   const temporary = `${target}.${process.pid}.tmp`;
@@ -183,7 +196,7 @@ async function ensureLocalDockerBox(settingsPath: string, inferenceCredential?: 
   } else if (!current.exists) {
     const authMounts = await localAuthMountArguments();
     const created = await runDocker([
-      "run", "--detach", "--name", LOCAL_DOCKER_BOX_CONTAINER,
+      "--config", await writeIsolatedDockerConfig(settingsPath), ...await dockerHostArguments(), "run", "--detach", "--name", LOCAL_DOCKER_BOX_CONTAINER,
       "--label", LOCAL_DOCKER_OWNER_LABEL, "--label", `com.grok-bot.local-vm.host-sha256=${hostBundle.sha256}`,
       "--label", `com.grok-bot.local-vm.box-exec-daemon-sha256=${hostBundle.boxExecDaemonSha256}`,
       "--label", `com.grok-bot.local-vm.inference-credential=${inferenceCredential == null ? "0" : "1"}`,
@@ -215,8 +228,19 @@ async function ensureLocalDockerBox(settingsPath: string, inferenceCredential?: 
   throw new Error("Local Docker VM did not expose its gateway within three minutes.");
 }
 
+function startLocalDockerBoxOnce(
+  settingsPath: string,
+  loadInferenceCredential?: () => Promise<InferenceCredential | undefined>,
+): Promise<GatewayConnection> {
+  if (ensureInFlight == null) ensureInFlight = (async () => {
+    const credential = loadInferenceCredential == null ? undefined : await loadInferenceCredential();
+    return await ensureLocalDockerBox(settingsPath, credential);
+  })().finally(() => { ensureInFlight = undefined; });
+  return ensureInFlight;
+}
+
 export async function startLocalDockerBox(settingsPath: string): Promise<GatewayConnection> {
-  return await ensureLocalDockerBox(settingsPath);
+  return await startLocalDockerBoxOnce(settingsPath);
 }
 
 export async function stopLocalDockerBox(): Promise<void> {
@@ -231,16 +255,13 @@ export function createSettingsRoutedHostConnector(
   remote: SandRemoteHostConnector,
   settings: SandSettingsStore,
 ): SandRemoteHostConnector {
-  const localConnect = (): Promise<GatewayConnection> => {
-    if (ensureInFlight == null) ensureInFlight = (async () => {
-      const issued = remote.issueInferenceCredential == null ? undefined : await Promise.race([
-        remote.issueInferenceCredential(),
-        new Promise<undefined>((resolve) => setTimeout(resolve, OPTIONAL_CREDENTIAL_TIMEOUT_MS)),
-      ]);
-      return await ensureLocalDockerBox(settings.settingsPath, issued);
-    })().finally(() => { ensureInFlight = undefined; });
-    return ensureInFlight;
-  };
+  const localConnect = (): Promise<GatewayConnection> => startLocalDockerBoxOnce(settings.settingsPath, async () => {
+    const issued = remote.issueInferenceCredential == null ? undefined : await Promise.race([
+      remote.issueInferenceCredential(),
+      new Promise<undefined>((resolve) => setTimeout(resolve, OPTIONAL_CREDENTIAL_TIMEOUT_MS)),
+    ]);
+    return issued;
+  });
   return {
     connect: async () => settings.getBoxRuntime() === "local-docker" ? await localConnect() : await remote.connect(),
     ...(remote.issueLocalExecDaemonCredential == null ? {} : { issueLocalExecDaemonCredential: remote.issueLocalExecDaemonCredential.bind(remote) }),
