@@ -146,6 +146,7 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(providers, /https:\/\/chatgpt\.com\/backend-api\/codex/);
   assert.match(providers, /headers\.set\("ChatGPT-Account-Id", credentials\.accountId\)/);
   assert.match(providers, /streamCodexDirectResponses/);
+  assert.match(providers, /gpt-5\.6-sol/);
   assert.doesNotMatch(providers, /provider\.responses\(configuredCodexModel\(\)\)/);
   assert.match(codexDirect, /store: false/);
   assert.match(codexDirect, /response\.output_text\.delta/);
@@ -214,6 +215,7 @@ test("local Docker provisioning is single-flight across settings and coordinator
   assert.match(bakenekoInstaller, /--restart unless-stopped/);
   assert.match(bakenekoInstaller, /SAND_AUTO_REVIEW_MODE=off/);
   assert.match(bakenekoInstaller, /--volume "\$data_root\/codex-home:\/root\/\.codex"/);
+  assert.match(bakenekoInstaller, /\[\[ ! -O .*auth\.json.*\]\] \|\| chmod 600/);
   assert.match(bakenekoInstaller, /--publish "\$remote_ip:1340:1340"/);
   assert.match(bakenekoInstaller, /self-hosted-gateway\.json/);
 });

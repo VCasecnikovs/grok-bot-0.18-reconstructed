@@ -50,5 +50,6 @@ test("remote deployment binds services to SSH loopback and persists Codex auth",
   assert.match(installer.SSH_REMOTE_INSTALL_SCRIPT, /--restart unless-stopped/);
   assert.match(installer.SSH_REMOTE_INSTALL_SCRIPT, /codex-home:\/root\/\.codex/);
   assert.match(installer.SSH_REMOTE_INSTALL_SCRIPT, /SAND_AUTO_REVIEW_MODE=off/);
+  assert.match(installer.SSH_REMOTE_INSTALL_SCRIPT, /\[\[ ! -O .*auth\.json.*\]\] \|\| chmod 600/);
   assert.doesNotMatch(installer.SSH_REMOTE_INSTALL_SCRIPT, /0\.0\.0\.0:1340:1340/);
 });

@@ -54,7 +54,8 @@ fi
 if [[ ! -s "$data_root/gateway-token" ]]; then
   openssl rand -hex -out "$data_root/gateway-token" 32
 fi
-chmod 600 "$data_root/gateway-token" "$data_root/codex-home/auth.json"
+chmod 600 "$data_root/gateway-token"
+[[ ! -O "$data_root/codex-home/auth.json" ]] || chmod 600 "$data_root/codex-home/auth.json"
 docker pull "$image" >/dev/null
 if docker container inspect "$container_name" >/dev/null 2>&1; then
   docker stop "$container_name" >/dev/null

@@ -111,7 +111,8 @@ if [[ ! -s "$data_root/gateway-token" ]]; then
   else od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "$data_root/gateway-token"
   fi
 fi
-chmod 600 "$data_root/gateway-token" "$data_root/codex-home/auth.json"
+chmod 600 "$data_root/gateway-token"
+[[ ! -O "$data_root/codex-home/auth.json" ]] || chmod 600 "$data_root/codex-home/auth.json"
 
 docker pull "$image" >/dev/null
 if docker container inspect "$container_name" >/dev/null 2>&1; then

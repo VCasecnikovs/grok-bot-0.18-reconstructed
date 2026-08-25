@@ -136,8 +136,8 @@ function configuredCodexModel(): string {
   if (selected) return selected;
   try {
     const config = readFileSync(join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "config.toml"), "utf8");
-    return /^\s*model\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.trim() || "gpt-5.4";
-  } catch { return "gpt-5.4"; }
+    return /^\s*model\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.trim() || "gpt-5.6-sol";
+  } catch { return "gpt-5.6-sol"; }
 }
 
 function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
