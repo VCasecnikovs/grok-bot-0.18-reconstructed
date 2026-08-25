@@ -613,8 +613,9 @@ export function createTurnRunShell(host: TurnRunShellHost) {
 
     const memoryStore = host.memoryStore?.();
     const episodeProgress = host.episodeProgress?.();
+    const settleHost = host.createSettleHost();
     const settle = createTurnSettle(
-      host.createSettleHost(),
+      settleHost,
       {
         conversationId: host.getConversationId(),
         profilePromptSnapshots: host.profilePromptSnapshots(),
@@ -704,6 +705,21 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         prepared.baseState,
         prepared.transcriptPersistenceEnabled,
       );
+      if (prepared.transcriptPersistenceEnabled) {
+        await settleHost.transcriptMirror?.recover(
+          context,
+          settleHost.getTranscriptId(),
+          prepared.baseState,
+          settleHost.getBlobStore(),
+        );
+      } else {
+        await settleHost.transcriptMirror?.skipCheckpoint(
+          context,
+          settleHost.getTranscriptId(),
+          prepared.baseState,
+          settleHost.getBlobStore(),
+        );
+      }
 
       if (controller.signal.aborted) {
         throw new SandTurnInterruptedBeforeDispatchError();

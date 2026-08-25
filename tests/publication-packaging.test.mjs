@@ -155,7 +155,9 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.doesNotMatch(rendererPatch, /ANTHROPIC_API_KEY|OPENAI_API_KEY/);
   assert.match(turnShell, /inferenceProvider === "cursor"/);
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider\)/);
-  assert.match(coordinator, /method === "sendPrompt"\) return \{ handled: false \}/);
+  // Regression: the journal was prepared before its durable checkpoint was recovered, 2026-08-25.
+  assert.match(turnShell, /transcriptMirror\?\.recover\(/);
+  assert.match(coordinator, /\["sendPrompt", "reactToMessage", "getAgentTranscriptTail", "openAgentTail", "getAgentTranscriptWindow"\]\.includes\(method\)\) return \{ handled: false \}/);
   assert.match(coordinatorResync, /"inference_provider".*inferenceProvider: deps\.getInferenceProvider\(\)/);
   assert.match(coordinator, /executeTool: async \(definition, toolArgs, toolCallId\)/);
   assert.match(coordinatorMain, /command\(commands, "listRoutedMcpTools", args\)/);

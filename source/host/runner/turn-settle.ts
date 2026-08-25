@@ -40,6 +40,12 @@ export type ProfilePromptSnapshot = AgentProfilePromptSnapshot;
 export interface TurnSettleHost {
   readonly isSubagentRunner: boolean;
   readonly transcriptMirror?: {
+    recover(
+      context: unknown,
+      transcriptId: string,
+      checkpoint: TurnCheckpoint,
+      blobStore: unknown,
+    ): Promise<void>;
     prepareCheckpoint(
       context: unknown,
       transcriptId: string,

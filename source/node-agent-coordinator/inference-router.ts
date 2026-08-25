@@ -188,8 +188,8 @@ export function createCoordinatorInferenceRouter(options: {
     provider(): SandInferenceProvider { return settings.getInferenceProvider(); },
     async dispatch(method: string, args: unknown): Promise<{ handled: boolean; value?: unknown }> {
       const provider = settings.getInferenceProvider();
-      // Native host turns own the shell/browser tool loop; only auxiliary coordinator calls stay local.
-      if (method === "sendPrompt") return { handled: false };
+      // Native host turns own both the tool loop and its transcript.
+      if (["sendPrompt", "reactToMessage", "getAgentTranscriptTail", "openAgentTail", "getAgentTranscriptWindow"].includes(method)) return { handled: false };
       if (method === "reactToMessage") {
         const record = asRecord(args) ?? {};
         const agentId = typeof record.agentId === "string" ? record.agentId : "";
