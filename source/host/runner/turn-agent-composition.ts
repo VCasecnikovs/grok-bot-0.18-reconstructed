@@ -119,8 +119,7 @@ import {
   type PromptExecutor as ReminderPromptExecutor,
 } from "./send-message-reminder-middleware.js";
 import { createStartOfTurnAckReminderMiddleware } from "./start-of-turn-ack-reminder-middleware.js";
-import { createSandBrowserUseSubagentConfig } from "./tools/sand-browser-use-subagent.js";
-import { createSandComputerUseSubagentConfig } from "./tools/sand-computer-use-subagent.js";
+import { createSandDesktopUseSubagentConfigs } from "./tools/sand-browser-use-subagent.js";
 import { createSandExecutorSubagentConfig } from "../sand-multitask.js";
 import {
   buildSandSubagentLaunchReviewTarget,
@@ -1694,8 +1693,7 @@ export function createTurnAgentComposition(
     const configs = [...(host.getSubagentConfigs?.() ?? [])];
     if (host.toolHost.remoteBoxHasDesktop && host.toolHost.getRemoteBoxAvailable()) {
       const browserUseOffered = host.isBrowserUseSubagentEnabled?.() === true;
-      configs.push(createSandComputerUseSubagentConfig({ browserUseOffered }));
-      if (browserUseOffered) configs.push(createSandBrowserUseSubagentConfig());
+      configs.push(...createSandDesktopUseSubagentConfigs(browserUseOffered));
     }
     if (host.isSystemPromptOverridden !== true && host.isMultitaskEnabled?.() === true) {
       const executor = createSandExecutorSubagentConfig();
@@ -1718,7 +1716,8 @@ export function createTurnAgentComposition(
       if (generalPurposeIndex >= 0) configs.splice(generalPurposeIndex, 1, executor);
       else configs.push(executor);
     }
-    return configs;
+    subagentConfigsForRun = configs;
+    return subagentConfigsForRun;
   }
 
   function buildAgentForRunFromInput(

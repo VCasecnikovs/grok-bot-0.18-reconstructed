@@ -120,6 +120,9 @@ mv "$settings_root/settings.json.incoming" "$settings_root/settings.json"
 
 ditto "$app_source" "$app_target"
 codesign --verify --deep --strict "$app_target"
+/usr/bin/touch "$app_target"
+"/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister" -f "$app_target" >/dev/null
+/usr/bin/killall Dock >/dev/null 2>&1 || true
 node --input-type=module -e '
   import { readFile } from "node:fs/promises";
   const connection = JSON.parse(await readFile(process.env.HOME + "/.grokbot-reconstructed/self-hosted-gateway.json", "utf8"));

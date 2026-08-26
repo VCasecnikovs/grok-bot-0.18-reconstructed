@@ -1,4 +1,5 @@
 import { displaySpaceSentence } from "../../box/box-monitor-layout.js";
+import { SubagentType, SubagentTypeCustom } from "../../../packages/proto/generated/agent/v1/subagents_pb.js";
 
 export const COMPUTER_USE_SUBAGENT_TYPE = "computerUse";
 const normalize = (value: string): string => value.replace(/[-_ ]/g, "").toLowerCase();
@@ -21,7 +22,10 @@ export function computerUseSubagentDescription(browserUseOffered: boolean): stri
 }
 
 export const createSandComputerUseSubagentConfig = (args: { browserUseOffered: boolean }) => ({
-  subagent_type: { type: { case: "custom", value: { name: COMPUTER_USE_SUBAGENT_TYPE } } },
+  subagent_type: new SubagentType({
+    type: { case: "custom", value: new SubagentTypeCustom({ name: COMPUTER_USE_SUBAGENT_TYPE }) },
+  }),
+  permissionMode: 1 as const,
   description: computerUseSubagentDescription(args.browserUseOffered),
   preserveTaskTool: false,
   subagentSource: "builtin" as const,

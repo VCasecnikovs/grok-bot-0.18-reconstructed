@@ -1,3 +1,6 @@
+import { createSandComputerUseSubagentConfig } from "./sand-computer-use-subagent.js";
+import { SubagentType, SubagentTypeCustom } from "../../../packages/proto/generated/agent/v1/subagents_pb.js";
+
 export const BROWSER_USE_SUBAGENT_TYPE = "browserUse";
 const normalize = (value: string): string => value.replace(/[-_ ]/g, "").toLowerCase();
 export const isBrowserUseSubagentType = (value: string | null | undefined): boolean => value != null && normalize(value) === normalize(BROWSER_USE_SUBAGENT_TYPE);
@@ -10,8 +13,16 @@ export const BROWSER_USE_SUBAGENT_DESCRIPTION = [
   "It cannot act as the user: if a step needs a human (a password, 2FA, a captcha, a payment) it stops and reports back, so you can hand the user the box with request_box_help and dispatch it again to continue.",
 ].join(" ");
 export const createSandBrowserUseSubagentConfig = () => ({
-  subagent_type: { type: { case: "custom", value: { name: BROWSER_USE_SUBAGENT_TYPE } } },
+  subagent_type: new SubagentType({
+    type: { case: "custom", value: new SubagentTypeCustom({ name: BROWSER_USE_SUBAGENT_TYPE }) },
+  }),
+  permissionMode: 1 as const,
   description: BROWSER_USE_SUBAGENT_DESCRIPTION,
   preserveTaskTool: false,
   subagentSource: "builtin" as const,
 });
+
+export const createSandDesktopUseSubagentConfigs = (browserUseOffered: boolean) => [
+  createSandComputerUseSubagentConfig({ browserUseOffered }),
+  ...(browserUseOffered ? [createSandBrowserUseSubagentConfig()] : []),
+];

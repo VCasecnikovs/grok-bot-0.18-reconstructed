@@ -1,3 +1,5 @@
+import { zodToJsonSchema } from "zod-to-json-schema";
+
 type Loose = Record<string, any>;
 
 export type CodexDirectUsage = {
@@ -120,7 +122,9 @@ function requestTools(tools: readonly CodexDirectTool[] | undefined): Loose[] | 
     type: "function",
     name: tool.name,
     ...(tool.description == null ? {} : { description: tool.description }),
-    parameters: tool.parameters,
+    parameters: typeof (tool.parameters as Loose | null)?.safeParse === "function"
+      ? zodToJsonSchema(tool.parameters as any, { $refStrategy: "none" })
+      : tool.parameters,
     strict: false,
   }));
 }

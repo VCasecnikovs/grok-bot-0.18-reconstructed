@@ -1,17 +1,31 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { transform } from "esbuild";
+import { build } from "esbuild";
+import { z } from "zod";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-async function loadModule() {
-  const source = await readFile(path.join(repoRoot, "source/host/extensions/inference/codex-direct-responses.ts"), "utf8");
-  const { code } = await transform(source, { format: "esm", loader: "ts", target: "es2022" });
-  return import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`);
+let modulePromise;
+function loadModule() {
+  modulePromise ??= (async () => {
+    const output = path.join(repoRoot, ".build", "tests", "codex-direct-responses.mjs");
+    await mkdir(path.dirname(output), { recursive: true });
+    await build({
+      absWorkingDir: repoRoot,
+      entryPoints: ["source/host/extensions/inference/codex-direct-responses.ts"],
+      outfile: output,
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      target: "node26",
+    });
+    return import(`${pathToFileURL(output).href}?${Date.now()}`);
+  })();
+  return modulePromise;
 }
 
 function sse(events, split = 17) {
@@ -84,6 +98,29 @@ test("direct Codex Responses transport executes Grok Bot tools and continues wit
   assert.equal(requests[1].input.at(-2).type, "function_call");
   assert.deepEqual(requests[1].input.at(-1), { type: "function_call_output", call_id: "call-123", output: JSON.stringify({ result: { case: "success", value: { subject: "Subject" } } }) });
   assert.deepEqual(events.at(-1), { type: "done", text: "Subject", responseId: "resp-final", usage: { inputTokens: 28, outputTokens: 6, cacheReadTokens: 6, cacheWriteTokens: 0 } });
+});
+
+test("direct Codex Responses transport converts native Zod tool parameters to JSON Schema", async () => {
+  const { streamCodexDirectResponses } = await loadModule();
+  let request;
+  for await (const _event of streamCodexDirectResponses({
+    fetch: async (_url, init) => {
+      request = JSON.parse(init.body);
+      return sse([{ type: "response.completed", response: { id: "resp-schema", output: [], usage: {} } }]);
+    },
+    endpoint: "https://example.invalid/responses",
+    model: "gpt-test",
+    instructions: "Use native tools",
+    input: [{ role: "user", content: "browse" }],
+    tools: [{
+      name: "task",
+      parameters: z.object({ prompt: z.string(), subagent_type: z.enum(["computerUse", "browserUse"]) }),
+      source: {},
+    }],
+  })) {}
+  assert.deepEqual(request.tools[0].parameters.required, ["prompt", "subagent_type"]);
+  assert.equal(request.tools[0].parameters.properties.prompt.type, "string");
+  assert.deepEqual(request.tools[0].parameters.properties.subagent_type.enum, ["computerUse", "browserUse"]);
 });
 
 test("direct Codex Responses transport hands native tools back to Grok Bot's host loop", async () => {

@@ -52,6 +52,8 @@ await cp(builtAsarUnpacked, packagedUnpacked, {
 
 const infoPlist = path.join(outputApp, "Contents", "Info.plist");
 await run(SYSTEM_TOOLS.plutil, ["-remove", "ElectronAsarIntegrity", infoPlist]);
+await run(SYSTEM_TOOLS.plutil, ["-remove", "CFBundleIconName", infoPlist]);
+await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleVersion", "-string", "0.18.1", infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIdentifier", "-string", reconstructedBundleId, infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", reconstructedName, infoPlist]);
 // The backend currently emits only the `sand` auth/deep-link target. Make the

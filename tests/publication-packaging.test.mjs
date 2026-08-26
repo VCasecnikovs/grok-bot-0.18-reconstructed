@@ -38,6 +38,9 @@ test("default packaging keeps the polished checksum-pinned renderer", async () =
   assert.match(source, /import \{ buildFidelityReconstructedAsar \} from "\.\/clean-build\.mjs"/);
   assert.match(source, /await buildFidelityReconstructedAsar\(\)/);
   assert.match(source, /verifyChecksumPinnedRendererPackage/);
+  assert.match(source, /grok-bot-red-icon\.icns/);
+  assert.match(source, /plutil, \["-remove", "CFBundleIconName", infoPlist\]/);
+  assert.match(source, /plutil, \["-replace", "CFBundleVersion", "-string", "0\.18\.1", infoPlist\]/);
   assert.match(verifier, /verifyChecksumPinnedRendererPackage/);
   assert.match(packageJson.scripts["package:zip"], /\/usr\/bin\/zip -qryFS/);
   assert.doesNotMatch(packageJson.scripts["package:zip"], /ditto/);
@@ -102,6 +105,8 @@ test("Router settings use the trusted backend and display recorded inference usa
   const coordinatorMain = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "main.ts"), "utf8");
   const coordinatorResync = await readFile(path.join(repoRoot, "source", "electron-main", "coordinator", "coordinator-resync.ts"), "utf8");
   const mcpBridge = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "routed-mcp-bridge.ts"), "utf8");
+  const hostRunner = await readFile(path.join(repoRoot, "source", "host", "host-runner-composition.ts"), "utf8");
+  const browserTools = await readFile(path.join(repoRoot, "source", "host", "runner", "tools", "sand-browser-tools.ts"), "utf8");
   const localDocker = await readFile(path.join(repoRoot, "source", "electron-main", "box", "local-docker-host-connector.ts"), "utf8");
   const sshInstaller = await readFile(path.join(repoRoot, "source", "electron-main", "box", "ssh-remote-host-installer.ts"), "utf8");
   assert.match(rendererPatch, /desktop\.agent\.getInferenceRouter\(\)/);
@@ -134,6 +139,12 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(mainEdge, /installSshRemoteBox\(settingsPath, host\)/);
   assert.match(sshInstaller, /StrictHostKeyChecking=accept-new/);
   assert.match(sshInstaller, /BatchMode=yes/);
+  // Regression: piping the 20 MB host bundle through child stdin truncated at 950 KB and crashed Electron with EPIPE, 2026-08-26.
+  assert.match(sshInstaller, /run\("scp"/);
+  assert.match(sshInstaller, /gzipSync\(await readFile\(path\)\)/);
+  assert.match(sshInstaller, /gzip -dc "\$upload_root\/host-main\.cjs\.gz"/);
+  assert.doesNotMatch(sshInstaller, /readFile\(bundle\.path\)/);
+  assert.match(sshInstaller, /child\.stdin\.on\("error"/);
   assert.match(localDocker, /public\.ecr\.aws\/k0i0n2g5\/cursorenvironments\/universal:sand-box-latest/);
   assert.match(localDocker, /"127\.0\.0\.1:1340:1340"/);
   assert.match(localDocker, /SAND_BOX_AUTO_UPDATE=0/);
@@ -191,6 +202,19 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(coordinator, /executeRoutedMcpTool/);
   assert.match(mcpBridge, /server\.listen\(0, "127\.0\.0\.1"/);
   assert.match(mcpBridge, /readOnlyHint: readOnly/);
+  assert.match(hostRunner, /subagentConfigs: createSandDesktopUseSubagentConfigs\(browserUseOffered\)/);
+  // Regression: production browserUse was advertised but its child runner had no turn shell, 2026-08-26.
+  assert.match(hostRunner, /productionSubagentScope\.run\(/);
+  assert.doesNotMatch(hostRunner, /productionTurnRunShell: undefined/);
+  assert.match(hostRunner, /isSubagentRunner \? \{ \.\.\.baseTurn, subagentConfigs: \[\] \} : baseTurn/);
+  // Regression: box browser tools used the Mac accessor, so the remote driver could not resolve shellArgs, 2026-08-26.
+  assert.match(hostRunner, /createBrowserToolInputs: \(turn, props\)/);
+  assert.match(hostRunner, /resourceAccessor: turn\.remoteBoxResourceAccessor/);
+  // Regression: Codex tool execution requires serializable results between response steps, 2026-08-26.
+  assert.match(browserTools, /interface BrowserToolResult extends BrowserDriverOutput/);
+  assert.match(browserTools, /toJson: \(\) => \(\{ text: output\.text/);
+  assert.match(hostRunner, /getDefaultViewId: \(\) => agentId/);
+  assert.match(sshInstaller, /attempt < 600/);
   assert.match(mcpBridge, /request\.url !== `\/mcp\/\$\{secret\}`/);
   assert.match(coordinator, /kind: "send-message"/);
   assert.match(coordinatorMain, /createCoordinatorInferenceRouter/);
@@ -218,6 +242,8 @@ test("local Docker provisioning is single-flight across settings and coordinator
   assert.match(bakenekoInstaller, /\[\[ ! -O .*auth\.json.*\]\] \|\| chmod 600/);
   assert.match(bakenekoInstaller, /--publish "\$remote_ip:1340:1340"/);
   assert.match(bakenekoInstaller, /self-hosted-gateway\.json/);
+  assert.match(bakenekoInstaller, /LaunchServices\.framework\/Support\/lsregister" -f "\$app_target"/);
+  assert.match(bakenekoInstaller, /killall Dock/);
 });
 
 test("the reconstructed app uses its own macOS secure-storage identity", async () => {

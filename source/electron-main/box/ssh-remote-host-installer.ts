@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { gzipSync } from "node:zlib";
 
 import type { GatewayConnection } from "./gateway-descriptor-cache.js";
 import { stageCurrentHostBundle } from "./host-runtime-bundle.js";
@@ -11,6 +12,7 @@ export const SSH_REMOTE_LOCAL_PORTS = { exec: 31337, auxiliary: 31339, gateway: 
 const SSH_OPTIONS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=accept-new", "-o", "LogLevel=ERROR"] as const;
 const IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
 const UPLOAD_ROOT = "$HOME/.local/share/grok-bot-remote/upload";
+const UPLOAD_TARGET_ROOT = ".local/share/grok-bot-remote/upload";
 
 interface SshGatewaySettings { readonly host: string }
 export interface SshRemoteStatus { readonly configured: boolean; readonly host: string | null; readonly ready: boolean; readonly detail: string }
@@ -53,6 +55,7 @@ function run(command: string, args: readonly string[], input?: Buffer | string, 
     const append = (chunk: Buffer): void => { output += chunk.toString(); if (output.length > 200_000) output = output.slice(-200_000); };
     child.stdout.on("data", append);
     child.stderr.on("data", append);
+    child.stdin.on("error", () => {});
     const timeout = setTimeout(() => { timedOut = true; child.kill("SIGTERM"); }, timeoutMs);
     child.once("error", (error) => { clearTimeout(timeout); reject(new Error(`${command} could not start: ${error.message}`)); });
     child.once("close", (code) => {
@@ -68,8 +71,11 @@ function sshArgs(host: string, remoteCommand: string): string[] {
   return [...SSH_OPTIONS, normalizeSshDestination(host), remoteCommand];
 }
 
-async function upload(host: string, name: "host-main.cjs" | "box-exec-daemon.cjs" | "codex-auth.json", bytes: Buffer): Promise<void> {
-  await run("ssh", sshArgs(host, `umask 077; mkdir -p "${UPLOAD_ROOT}"; cat > "${UPLOAD_ROOT}/${name}"`), bytes);
+async function upload(host: string, name: "host-main.cjs" | "box-exec-daemon.cjs" | "codex-auth.json", path: string): Promise<void> {
+  const compressed = name.endsWith(".cjs"), source = compressed ? `${path}.gz` : path, target = compressed ? `${name}.gz` : name;
+  if (compressed) await writeFile(source, gzipSync(await readFile(path)), { mode: 0o600 });
+  await run("ssh", sshArgs(host, `umask 077; mkdir -p "${UPLOAD_ROOT}"`));
+  await run("scp", [...SSH_OPTIONS, source, `${host}:${UPLOAD_TARGET_ROOT}/${target}`]);
 }
 
 export const SSH_REMOTE_INSTALL_SCRIPT = String.raw`set -euo pipefail
@@ -80,6 +86,7 @@ legacy_data_root="/srv/codex-klava/data/grok-bot"
 
 [[ $(uname -m) == x86_64 ]] || { echo "The Grok Bot image requires an x86_64 Linux server." >&2; exit 1; }
 command -v docker >/dev/null || { echo "Docker is not installed or is not available to this SSH user." >&2; exit 1; }
+command -v gzip >/dev/null || { echo "gzip is required to install the Grok Bot runtime." >&2; exit 1; }
 
 if [[ -d "$legacy_data_root/sand-data" && -w "$legacy_data_root" && -w "$legacy_app_root" ]]; then
   app_root="$legacy_app_root"
@@ -93,8 +100,12 @@ fi
 
 install -d -m 755 "$app_root/runtime/box-exec-daemon"
 install -d -m 700 "$data_root" "$data_root/sand-data" "$data_root/workspace" "$data_root/codex-home"
-install -m 600 "$upload_root/host-main.cjs" "$app_root/runtime/host-main.cjs"
-install -m 600 "$upload_root/box-exec-daemon.cjs" "$app_root/runtime/box-exec-daemon/main.cjs"
+gzip -dc "$upload_root/host-main.cjs.gz" > "$app_root/runtime/host-main.cjs.incoming"
+gzip -dc "$upload_root/box-exec-daemon.cjs.gz" > "$app_root/runtime/box-exec-daemon/main.cjs.incoming"
+chmod 600 "$app_root/runtime/host-main.cjs.incoming" "$app_root/runtime/box-exec-daemon/main.cjs.incoming"
+mv "$app_root/runtime/host-main.cjs.incoming" "$app_root/runtime/host-main.cjs"
+mv "$app_root/runtime/box-exec-daemon/main.cjs.incoming" "$app_root/runtime/box-exec-daemon/main.cjs"
+rm -f "$upload_root/host-main.cjs" "$upload_root/box-exec-daemon.cjs"
 if [[ ! -s "$data_root/codex-home/auth.json" ]]; then
   if [[ -s "$HOME/.codex/auth.json" ]]; then
     install -m 600 "$HOME/.codex/auth.json" "$data_root/codex-home/auth.json"
@@ -208,7 +219,7 @@ export async function ensureSshGatewayTunnel(connection: GatewayConnection, ssh:
     child.once("error", (error) => { if (tunnel?.child === child) tunnel.stderr = error.message; });
     process.once("exit", () => child.kill("SIGTERM"));
   }
-  for (let attempt = 0; attempt < 150; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if (await gatewayReady(connection)) return;
     if (tunnel == null || tunnel.child.exitCode != null) throw new Error(tunnel?.stderr.trim() || "The SSH tunnel stopped before Grok Bot became reachable.");
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -234,9 +245,9 @@ export function installSshRemoteBox(settingsPath: string, value: unknown): Promi
   if (installInFlight == null) installInFlight = (async () => {
     await run("ssh", sshArgs(host, "true"), undefined, 15_000).catch((error) => { throw new Error(`SSH key login to ${host} failed. ${error instanceof Error ? error.message : String(error)}`); });
     const bundle = await stageCurrentHostBundle(settingsPath);
-    await upload(host, "host-main.cjs", await readFile(bundle.path));
-    await upload(host, "box-exec-daemon.cjs", await readFile(bundle.boxExecDaemonPath));
-    try { await upload(host, "codex-auth.json", await readFile(join(homedir(), ".codex", "auth.json"))); } catch {}
+    await upload(host, "host-main.cjs", bundle.path);
+    await upload(host, "box-exec-daemon.cjs", bundle.boxExecDaemonPath);
+    try { await upload(host, "codex-auth.json", join(homedir(), ".codex", "auth.json")); } catch {}
     const output = await run("ssh", [...SSH_OPTIONS, host, "bash", "-s"], SSH_REMOTE_INSTALL_SCRIPT);
     const match = output.match(/(?:^|\n)GROK_BOT_REMOTE_RESULT\t([0-9a-f]{64})\t([A-Za-z0-9_.-]+)(?:\n|$)/);
     if (match == null) throw new Error("The remote installer finished without a valid connection descriptor.");
