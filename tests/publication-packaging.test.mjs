@@ -116,6 +116,7 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(rendererPatch, /role:"switch"/);
   assert.match(rendererPatch, /Use local Docker VM/);
   assert.match(rendererPatch, /Install on SSH server/);
+  assert.match(rendererPatch, /Email, plugins, browser sessions, and connector tokens stay in this reconstructed app's own profile/);
   assert.match(rendererPatch, /desktop\.agent\.installSshRuntime/);
   assert.match(rendererPatch, /onValueChange:l=>\{if\(l!==null\)void e\(l\)\}/);
   assert.match(rendererPatch, /desktop\.secrets\.upsert/);

@@ -16,6 +16,7 @@ import { resolveRuntimeApp } from "./runtime.mjs";
 export const reconstructedUpdaterGuard = [
   "// Reconstructed-build guard: do not consume official update or telemetry services.",
   "process.env.SAND_DATA_ROOT ??= require(\"node:path\").join(require(\"node:os\").homedir(), \".grokbot-reconstructed\");",
+  "process.env.SAND_MCP_OAUTH_CALLBACK_URL ??= \"http://localhost:8788/callback\";",
   "process.env.SAND_DISABLE_UPDATES ??= \"1\";",
   "process.env.SAND_DISABLE_SENTRY ??= \"1\";",
   "process.env.SAND_DISABLE_TELEMETRY ??= \"1\";",

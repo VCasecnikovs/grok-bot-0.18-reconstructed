@@ -23,6 +23,14 @@ import {
   renderMcpOAuthErrorPage as renderErrorPage,
   renderMcpOAuthSuccessPage as renderSuccessPage,
 } from "../../mcp-oauth-callback-page.js";
+import {
+  DEFAULT_MCP_OAUTH_LOOPBACK_CALLBACK_URL,
+  resolveMcpOAuthLoopbackCallbackUrl,
+} from "./mcp-oauth-callback-url.js";
+export {
+  DEFAULT_MCP_OAUTH_LOOPBACK_CALLBACK_URL,
+  resolveMcpOAuthLoopbackCallbackUrl,
+} from "./mcp-oauth-callback-url.js";
 const renderMcpOAuthSuccessPage = (args: {
   serverName: string | undefined;
 }): string =>
@@ -35,8 +43,10 @@ const renderMcpOAuthErrorPage = (args: {
   renderErrorPage(
     args.serverName == null ? undefined : { serverName: args.serverName },
   );
+const isLoopback = (host: string): boolean =>
+  ["localhost", "127.0.0.1", "[::1]", "::1"].includes(host);
 export const MCP_OAUTH_LOOPBACK_CALLBACK_URL =
-  "http://localhost:8787/callback";
+  resolveMcpOAuthLoopbackCallbackUrl();
 const BACKEND_MCP_OAUTH_PENDING_STATE_TTL_MS = 15 * 60 * 1_000;
 const MCP_OAUTH_PENDING_TTL_MS = BACKEND_MCP_OAUTH_PENDING_STATE_TTL_MS + 60_000;
 const MCP_OAUTH_COMPLETION_RETRY_DELAY_MS = 500;
@@ -51,8 +61,6 @@ const callbackFailureReason = brandedEnumOf(
   CONNECTOR_OAUTH_CALLBACK_FAILURE_REASONS,
   "completion_rejected",
 );
-const isLoopback = (host: string): boolean =>
-  ["localhost", "127.0.0.1", "[::1]", "::1"].includes(host);
 const loopbackBindHosts = (redirectHost: string): readonly string[] =>
   redirectHost === "localhost" ? ["127.0.0.1", "::1"] : [redirectHost];
 export function parseMcpOAuthLoopbackAuthorization(
